@@ -1,0 +1,88 @@
+{
+  "version": "1.0.0",
+  "name": "RAG Introduction Knowledge Base",
+  "description": "Authoritative knowledge base for teaching RAG concepts to beginners",
+  "created_at": "2024-01-01T00:00:00Z",
+  "documents": [
+    {
+      "id": "doc-001",
+      "filename": "what_is_rag.md",
+      "topic": "rag",
+      "section": "definition",
+      "difficulty": "beginner",
+      "language": "en"
+    },
+    {
+      "id": "doc-002",
+      "filename": "why_rag_is_useful.md",
+      "topic": "rag",
+      "section": "motivation",
+      "difficulty": "beginner",
+      "language": "en"
+    },
+    {
+      "id": "doc-003",
+      "filename": "retrieval_basics.md",
+      "topic": "rag",
+      "section": "retrieval",
+      "difficulty": "beginner",
+      "language": "en"
+    },
+    {
+      "id": "doc-004",
+      "filename": "embeddings_explained.md",
+      "topic": "rag",
+      "section": "embeddings",
+      "difficulty": "beginner",
+      "language": "en"
+    },
+    {
+      "id": "doc-005",
+      "filename": "vector_databases.md",
+      "topic": "rag",
+      "section": "vector_databases",
+      "difficulty": "beginner",
+      "language": "en"
+    },
+    {
+      "id": "doc-006",
+      "filename": "context_in_rag.md",
+      "topic": "rag",
+      "section": "context",
+      "difficulty": "beginner",
+      "language": "en"
+    },
+    {
+      "id": "doc-007",
+      "filename": "generation_in_rag.md",
+      "topic": "rag",
+      "section": "generation",
+      "difficulty": "beginner",
+      "language": "en"
+    },
+    {
+      "id": "doc-008",
+      "filename": "rag_architecture.md",
+      "topic": "rag",
+      "section": "architecture",
+      "difficulty": "beginner",
+      "language": "en"
+    },
+    {
+      "id": "doc-009",
+      "filename": "rag_vs_normal_llm.md",
+      "topic": "rag",
+      "section": "comparison",
+      "difficulty": "beginner",
+      "language": "en"
+    },
+    {
+      "id": "doc-010",
+      "filename": "common_rag_misconceptions.md",
+      "topic": "rag",
+      "section": "misconceptions",
+      "difficulty": "beginner",
+      "language": "en"
+    }
+  ]
+}
