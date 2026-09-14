@@ -1,0 +1,50 @@
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: contentpilot-postgres
+    environment:
+      POSTGRES_USER: contentpilot
+      POSTGRES_PASSWORD: contentpilot
+      POSTGRES_DB: contentpilot
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U contentpilot"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: contentpilot-app
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://contentpilot:contentpilot@postgres:5432/contentpilot
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./knowledge:/app/knowledge:ro
+      - ./outputs:/app/outputs
+
+  ui:
+    build:
+      context: ./ui
+      dockerfile: Dockerfile
+    container_name: contentpilot-ui
+    ports:
+      - "3000:3000"
+    environment:
+      - NEXT_PUBLIC_API_URL=http://localhost:8000/api
+    depends_on:
+      - app
+
+volumes:
+  postgres_data:
