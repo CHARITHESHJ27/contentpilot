@@ -32,6 +32,8 @@ export default function EvaluationViewer({ runDetail, rejectionLog }: Props) {
   }
 
   const isShipped = runDetail.final_status === "shipped";
+  const isSystemError = runDetail.final_status === "failed" || runDetail.final_status === "system_error" || runDetail.decision === "system_error";
+  const isNotExecuted = isSystemError || runDetail.evaluation_status === "not_executed" || !runDetail.evaluation_result;
   const layerSummaries = runDetail.evaluation_result?.layer_summaries || {};
   const attempts = rejectionLog?.attempts || runDetail.attempts || [];
 
@@ -97,10 +99,14 @@ export default function EvaluationViewer({ runDetail, rejectionLog }: Props) {
             <h2 className="text-lg font-bold text-white">4-Layer Evaluation Stack & Hard Gate</h2>
             <span
               className={`px-3 py-1 rounded-full text-xs font-extrabold tracking-wide uppercase ${
-                isShipped ? "gradient-badge-pass" : "gradient-badge-fail"
+                isShipped
+                  ? "gradient-badge-pass"
+                  : isNotExecuted
+                  ? "bg-slate-500/20 text-slate-300 border border-slate-500/30"
+                  : "gradient-badge-fail"
               }`}
             >
-              Status: {runDetail.final_status.toUpperCase()}
+              Status: {isNotExecuted ? "NOT EXECUTED" : runDetail.final_status.toUpperCase()}
             </span>
           </div>
           <p className="text-xs text-slate-400 mt-1">
@@ -116,6 +122,16 @@ export default function EvaluationViewer({ runDetail, rejectionLog }: Props) {
         </div>
       </div>
 
+      {/* Informative Notice When Evaluation Not Executed */}
+      {isNotExecuted && (
+        <div className="rounded-2xl p-4 bg-slate-800/40 border border-white/10 flex items-center gap-3 text-xs text-slate-300">
+          <ShieldCheck className="w-5 h-5 text-slate-400 shrink-0" />
+          <p>
+            The 4-layer evaluation stack was not executed because generation was halted due to an upstream infrastructure error. Content retry budget was NOT consumed.
+          </p>
+        </div>
+      )}
+
       {/* 4 Layer Summary Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         {layers.map((layer) => {
@@ -128,14 +144,22 @@ export default function EvaluationViewer({ runDetail, rejectionLog }: Props) {
             <div
               key={layer.id}
               className={`p-4 rounded-2xl border transition glass-panel ${
-                passed ? "border-emerald-500/30" : "border-red-500/40"
+                isNotExecuted
+                  ? "border-white/10 opacity-80"
+                  : passed
+                  ? "border-emerald-500/30"
+                  : "border-red-500/40"
               }`}
             >
               <div className="flex items-center justify-between mb-3">
                 <div className="p-2 rounded-xl bg-white/5 border border-white/10 text-purple-400">
                   <Icon className="w-4 h-4" />
                 </div>
-                {passed ? (
+                {isNotExecuted ? (
+                  <span className="flex items-center gap-1 text-[11px] font-bold text-slate-400 bg-white/5 px-2.5 py-1 rounded-full border border-white/10">
+                    NOT EXECUTED
+                  </span>
+                ) : passed ? (
                   <span className="flex items-center gap-1 text-xs font-bold text-emerald-400 bg-emerald-500/10 px-2.5 py-1 rounded-full border border-emerald-500/20">
                     <CheckCircle className="w-3.5 h-3.5" /> PASSED
                   </span>

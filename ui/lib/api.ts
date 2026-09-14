@@ -18,12 +18,29 @@ export interface CreateRunRequest {
   demo_mode?: string | null;
 }
 
+export interface InfrastructureErrorDetail {
+  type: string;
+  category: string;
+  message: string;
+  detail: string;
+  retryable: boolean;
+  consumes_content_retry: boolean;
+  provider?: string;
+  model?: string;
+  stage?: string;
+  status_code?: number;
+  retry_after?: string;
+  run_id?: string;
+}
+
 export interface RunSummary {
   run_id: string;
   topic: string;
   final_status: string;
   retry_count: number;
   lesson_version: number;
+  decision?: string;
+  evaluation_status?: string;
   created_at?: string;
   completed_at?: string;
 }
@@ -92,6 +109,9 @@ export interface RunDetail {
   rubric_version: string;
   model_version: string;
   error?: string;
+  error_detail?: InfrastructureErrorDetail;
+  decision?: string;
+  evaluation_status?: string;
   created_at?: string;
   completed_at?: string;
   attempts?: EvaluationAttempt[];

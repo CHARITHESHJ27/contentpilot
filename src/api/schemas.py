@@ -36,6 +36,22 @@ class IngestRequest(BaseModel):
 
 # --- Response Models ---
 
+class InfrastructureErrorResponse(BaseModel):
+    """Normalized infrastructure error representation."""
+    type: str = "INFRASTRUCTURE_FAILURE"
+    category: str
+    message: str
+    detail: str
+    retryable: bool = True
+    consumes_content_retry: bool = False
+    provider: Optional[str] = None
+    model: Optional[str] = None
+    stage: Optional[str] = None
+    status_code: Optional[int] = None
+    retry_after: Optional[str] = None
+    run_id: Optional[str] = None
+
+
 class RunSummaryResponse(BaseModel):
     """Summary of a generation run."""
     run_id: str
@@ -43,6 +59,8 @@ class RunSummaryResponse(BaseModel):
     final_status: str
     retry_count: int
     lesson_version: int
+    decision: Optional[str] = None
+    evaluation_status: Optional[str] = None
     created_at: Optional[str] = None
     completed_at: Optional[str] = None
 
@@ -64,6 +82,9 @@ class RunDetailResponse(BaseModel):
     rubric_version: str = ""
     model_version: str = ""
     error: Optional[str] = None
+    error_detail: Optional[InfrastructureErrorResponse] = None
+    decision: Optional[str] = None
+    evaluation_status: Optional[str] = None
     created_at: Optional[str] = None
     completed_at: Optional[str] = None
 

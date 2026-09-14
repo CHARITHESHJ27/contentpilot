@@ -1,19 +1,24 @@
 "use client";
 
-import { CheckCircle2, XCircle, AlertTriangle, Clock, RefreshCw, Cpu, BookOpen, Layers, ShieldCheck, Tag } from "lucide-react";
+import { useState } from "react";
+import { CheckCircle2, XCircle, AlertTriangle, Clock, RefreshCw, Cpu, BookOpen, Layers, ShieldCheck, Tag, RotateCcw, ChevronDown, ChevronUp } from "lucide-react";
 import { RunDetail } from "@/lib/api";
 
 interface Props {
   runDetail: RunDetail | null;
   currentAttempt?: number;
   maxAttempts?: number;
+  onRetry?: () => void;
 }
 
 export default function RunStatusHeader({
   runDetail,
   currentAttempt = 1,
   maxAttempts = 3,
+  onRetry,
 }: Props) {
+  const [showDevDetails, setShowDevDetails] = useState(false);
+
   if (!runDetail) {
     return (
       <div className="glass-panel rounded-2xl p-4 border border-white/10 flex items-center justify-between text-xs text-slate-400">
@@ -28,7 +33,7 @@ export default function RunStatusHeader({
 
   const isPassed = runDetail.final_status === "shipped";
   const isRejected = runDetail.final_status === "rejected";
-  const isFailed = runDetail.final_status === "failed";
+  const isSystemError = runDetail.final_status === "failed" || runDetail.final_status === "system_error" || runDetail.decision === "system_error";
   const isPending = runDetail.final_status === "pending";
 
   const attemptsCount = (runDetail.retry_count || 0) + 1;
@@ -56,7 +61,7 @@ export default function RunStatusHeader({
                 {runDetail.retry_count >= 2 ? "REJECTED (Max Retries Reached)" : "REJECTED (Quality Gate Failed)"}
               </span>
             )}
-            {isFailed && (
+            {isSystemError && (
               <span className="px-3 py-1 rounded-full text-xs font-bold bg-rose-500/20 text-rose-400 border border-rose-500/30 flex items-center gap-1.5 shadow-sm shadow-rose-500/20">
                 <AlertTriangle className="w-3.5 h-3.5" />
                 SYSTEM ERROR
@@ -96,13 +101,81 @@ export default function RunStatusHeader({
         </div>
       </div>
 
-      {/* Error Alert if execution failed */}
-      {runDetail.error && (
-        <div className="rounded-xl p-3 bg-red-500/10 border border-red-500/30 flex items-start gap-3 text-xs text-red-200">
-          <AlertTriangle className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
-          <div className="space-y-1 overflow-hidden">
-            <div className="font-semibold text-red-300">System Execution Error</div>
-            <div className="font-mono text-[11px] text-red-200/90 break-all">{runDetail.error}</div>
+      {/* Clean Normalized System Error Card */}
+      {isSystemError && (
+        <div className="rounded-2xl p-5 bg-rose-500/10 border border-rose-500/30 space-y-4">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div className="space-y-1.5 max-w-2xl">
+              <div className="flex items-center gap-2 text-rose-300 font-bold text-sm">
+                <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0" />
+                <span>SYSTEM ERROR</span>
+              </div>
+              <p className="text-xs font-medium text-white/90">
+                Content generation could not be completed.
+              </p>
+              <p className="text-xs text-rose-200/80">
+                {runDetail.error_detail?.message || runDetail.error || "The AI provider is temporarily unavailable because a rate limit was reached."}
+              </p>
+              {runDetail.error_detail?.detail && runDetail.error_detail.detail !== runDetail.error && (
+                <p className="text-[11px] text-slate-300/80">
+                  {runDetail.error_detail.detail}
+                </p>
+              )}
+            </div>
+
+            {onRetry && (
+              <button
+                onClick={onRetry}
+                className="px-4 py-2 rounded-xl bg-rose-500/20 hover:bg-rose-500/30 border border-rose-500/40 text-xs font-semibold text-rose-200 hover:text-white flex items-center gap-1.5 transition shrink-0 shadow-sm"
+              >
+                <RotateCcw className="w-3.5 h-3.5" />
+                Retry Run
+              </button>
+            )}
+          </div>
+
+          {/* Attempt / Content Retries / Evaluation / Decision 4-item Grid */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-2 border-t border-rose-500/20 text-xs">
+            <div className="bg-black/30 p-2.5 rounded-xl border border-white/5">
+              <span className="text-[10px] uppercase tracking-wider text-slate-400 block font-semibold">Attempt</span>
+              <span className="text-sm font-bold text-white font-mono">{attemptsCount} / {maxAttempts}</span>
+            </div>
+            <div className="bg-black/30 p-2.5 rounded-xl border border-white/5">
+              <span className="text-[10px] uppercase tracking-wider text-slate-400 block font-semibold">Content Retries</span>
+              <span className="text-sm font-bold text-white font-mono">{regenerationsCount}</span>
+            </div>
+            <div className="bg-black/30 p-2.5 rounded-xl border border-white/5">
+              <span className="text-[10px] uppercase tracking-wider text-slate-400 block font-semibold">Evaluation</span>
+              <span className="text-sm font-bold text-slate-300">Not executed</span>
+            </div>
+            <div className="bg-black/30 p-2.5 rounded-xl border border-white/5">
+              <span className="text-[10px] uppercase tracking-wider text-slate-400 block font-semibold">Decision</span>
+              <span className="text-sm font-bold text-rose-400">System Error</span>
+            </div>
+          </div>
+
+          {/* Collapsible Developer Details (Strictly Sanitized - Zero Secrets) */}
+          <div className="pt-1">
+            <button
+              onClick={() => setShowDevDetails(!showDevDetails)}
+              className="text-[11px] font-medium text-rose-300/80 hover:text-rose-200 flex items-center gap-1 transition"
+            >
+              {showDevDetails ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+              <span>Developer Details</span>
+            </button>
+
+            {showDevDetails && (
+              <div className="mt-2.5 p-3.5 rounded-xl bg-black/40 border border-white/10 grid grid-cols-2 sm:grid-cols-4 gap-3 text-[11px] font-mono text-slate-300">
+                <div><span className="text-slate-500 block text-[10px] font-sans">Provider</span> {runDetail.error_detail?.provider || "Gemini"}</div>
+                <div><span className="text-slate-500 block text-[10px] font-sans">Model</span> {runDetail.error_detail?.model || runDetail.model_version || "gemini-3.5-flash"}</div>
+                <div><span className="text-slate-500 block text-[10px] font-sans">Stage</span> {runDetail.error_detail?.stage || "generation"}</div>
+                <div><span className="text-slate-500 block text-[10px] font-sans">HTTP Status</span> {runDetail.error_detail?.status_code || 429}</div>
+                <div><span className="text-slate-500 block text-[10px] font-sans">Category</span> {runDetail.error_detail?.category || "RATE_LIMIT"}</div>
+                <div><span className="text-slate-500 block text-[10px] font-sans">Retryable</span> {runDetail.error_detail?.retryable ? "Yes" : "No"}</div>
+                <div><span className="text-slate-500 block text-[10px] font-sans">Content Retry Consumed</span> No</div>
+                <div className="overflow-hidden"><span className="text-slate-500 block text-[10px] font-sans">Run ID</span> <span className="truncate block text-[10px]">{runDetail.run_id}</span></div>
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -123,26 +196,26 @@ export default function RunStatusHeader({
         </div>
         <div className="p-2.5 rounded-xl bg-white/5 border border-white/10 flex items-center justify-between text-xs">
           <span className="text-slate-400 font-medium">Generation</span>
-          <span className="text-emerald-400 font-bold flex items-center gap-1">
-            <CheckCircle2 className="w-3.5 h-3.5" /> ✓
+          <span className={isSystemError ? "text-rose-400 font-bold" : "text-emerald-400 font-bold flex items-center gap-1"}>
+            {isSystemError ? "✗ Error" : <><CheckCircle2 className="w-3.5 h-3.5" /> ✓</>}
           </span>
         </div>
         <div className="p-2.5 rounded-xl bg-white/5 border border-white/10 flex items-center justify-between text-xs">
           <span className="text-slate-400 font-medium">Validation</span>
-          <span className="text-emerald-400 font-bold flex items-center gap-1">
-            <CheckCircle2 className="w-3.5 h-3.5" /> ✓
+          <span className={isSystemError ? "text-slate-500 font-medium" : "text-emerald-400 font-bold flex items-center gap-1"}>
+            {isSystemError ? "— Not reached" : <><CheckCircle2 className="w-3.5 h-3.5" /> ✓</>}
           </span>
         </div>
         <div className="p-2.5 rounded-xl bg-white/5 border border-white/10 flex items-center justify-between text-xs">
           <span className="text-slate-400 font-medium">Evaluation</span>
-          <span className={isPassed ? "text-emerald-400 font-bold" : isRejected ? "text-red-400 font-bold" : "text-amber-400 font-bold"}>
-            {isPassed ? "✓ Pass" : isRejected ? "✗ Fail" : "● Gate"}
+          <span className={isSystemError ? "text-slate-400 font-medium" : isPassed ? "text-emerald-400 font-bold" : isRejected ? "text-red-400 font-bold" : "text-amber-400 font-bold"}>
+            {isSystemError ? "Not executed" : isPassed ? "✓ Pass" : isRejected ? "✗ Fail" : "● Gate"}
           </span>
         </div>
         <div className="p-2.5 rounded-xl bg-white/5 border border-white/10 flex items-center justify-between text-xs">
           <span className="text-slate-400 font-medium">Decision</span>
-          <span className={isPassed ? "text-emerald-400 font-bold" : isRejected ? "text-red-400 font-bold" : "text-amber-400 font-bold"}>
-            {isPassed ? "Shipped" : isRejected ? "Rejected" : "Pending"}
+          <span className={isSystemError ? "text-rose-400 font-bold" : isPassed ? "text-emerald-400 font-bold" : isRejected ? "text-red-400 font-bold" : "text-amber-400 font-bold"}>
+            {isSystemError ? "System Error" : isPassed ? "Shipped" : isRejected ? "Rejected" : "Pending"}
           </span>
         </div>
       </div>

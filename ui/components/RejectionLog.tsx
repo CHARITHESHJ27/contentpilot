@@ -35,6 +35,7 @@ export default function RejectionLog({ runDetail }: Props) {
 
   const attemptsCount = (runDetail.retry_count || 0) + 1;
   const isShipped = runDetail.final_status === "shipped" || runDetail.final_status === "passed";
+  const isSystemError = runDetail.final_status === "failed" || runDetail.final_status === "system_error" || runDetail.decision === "system_error";
   const hasRetries = runDetail.retry_count > 0;
 
   // Real structured What Changed diff data from backend API
@@ -66,21 +67,38 @@ export default function RejectionLog({ runDetail }: Props) {
             <h2 className="text-lg font-bold text-white">Attempt Rejection & Self-Correction Log</h2>
             <span
               className={`px-3 py-1 rounded-full text-xs font-extrabold ${
-                isShipped ? "gradient-badge-pass" : "gradient-badge-fail"
+                isShipped
+                  ? "gradient-badge-pass"
+                  : isSystemError
+                  ? "bg-rose-500/20 text-rose-300 border border-rose-500/30"
+                  : "gradient-badge-fail"
               }`}
             >
-              Status: {runDetail.final_status.toUpperCase()}
+              {isShipped ? "STATUS: SHIPPED" : isSystemError ? "STATUS: SYSTEM ERROR" : "STATUS: REJECTED"}
             </span>
           </div>
           <p className="text-xs text-slate-400 mt-1">
-            Topic: <span className="text-slate-200">{runDetail.topic}</span> | Total Attempts: {attemptsCount} / 3 | Max Retries: 2
+            Run ID: <span className="font-mono text-purple-300 font-semibold">{runDetail.run_id}</span> | Total Retries: {runDetail.retry_count} | Attempts: {attemptsCount} / 3
           </p>
         </div>
 
-        <div className="text-xs text-slate-400 font-mono bg-white/5 px-3 py-1.5 rounded-xl border border-white/10">
-          Bounded Budget: 1 Initial + Max 2 Regenerations
+        <div className="p-3 rounded-xl bg-white/5 border border-white/10 text-xs text-slate-300 space-y-1">
+          <span className="font-semibold text-purple-300 block">Bounded Retry Principle:</span>
+          <p className="text-[11px] text-slate-400">
+            Initial Attempt ➔ Retry 1 ➔ Retry 2 ➔ Hard Reject. Max 3 total attempts prevents runaway costs.
+          </p>
         </div>
       </div>
+
+      {/* Notice if system error */}
+      {isSystemError && (
+        <div className="rounded-2xl p-4 bg-rose-500/10 border border-rose-500/20 flex items-center gap-3 text-xs text-rose-200">
+          <AlertOctagon className="w-5 h-5 text-rose-400 shrink-0" />
+          <p>
+            No pedagogical content rejection occurred. This run was interrupted by an upstream infrastructure error ({runDetail.error_detail?.category || "RATE_LIMIT"}). The content retry budget was NOT consumed.
+          </p>
+        </div>
+      )}
 
       {/* Structured "What Changed" Diff Card */}
       {hasRetries && (

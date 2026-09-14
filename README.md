@@ -124,7 +124,7 @@ Open [http://localhost:3000](http://localhost:3000) in your browser.
 Run unit tests and verification checks:
 
 ```bash
-# Run unit test suite (40 tests covering chunking, checks, retry, fallback, evolution, and pgvector)
+# Run unit test suite (50 tests covering chunking, checks, retry, fallback, evolution, infrastructure errors, and pgvector)
 .venv/bin/pytest tests/unit
 
 # Verify Next.js production build

@@ -22,6 +22,7 @@ from src.api.schemas import (
     EvaluationResponse,
     EvolutionStatusResponse,
     HealthResponse,
+    InfrastructureErrorResponse,
     IngestRequest,
     IngestResponse,
     LessonResponse,
@@ -34,6 +35,12 @@ from src.api.schemas import (
 from src.config import get_settings
 from src.database.repository import ContentPilotRepository
 from src.database.session import get_db_session
+from src.errors import (
+    ErrorCategory,
+    InfrastructureErrorDetail,
+    InfrastructureFailure,
+    normalize_infrastructure_error,
+)
 from src.graph.workflow import compile_workflow
 from src.memory.failure_patterns import FailurePatternDetector
 from src.memory.run_memory import RunMemory
@@ -56,6 +63,7 @@ async def _execute_workflow(
     initial_state: dict[str, Any],
 ) -> None:
     """Execute the LangGraph workflow in the background."""
+    settings = get_settings()
     try:
         logger.info("workflow_execution_start", run_id=run_id)
 
@@ -66,7 +74,6 @@ async def _execute_workflow(
         _run_states[run_id] = final_state
 
         # Persist to database
-        settings = get_settings()
         from src.database.session import async_session_factory
 
         async with async_session_factory() as session:
@@ -95,13 +102,40 @@ async def _execute_workflow(
         )
 
     except Exception as e:
-        logger.error("workflow_execution_error", run_id=run_id, error=str(e), exc_info=True)
-        error_msg = f"INFRASTRUCTURE_FAILURE: {str(e)}"
+        norm_detail = getattr(e, "detail", None)
+        if not norm_detail or not isinstance(norm_detail, InfrastructureErrorDetail):
+            norm_detail = normalize_infrastructure_error(
+                e,
+                stage="generation",
+                provider=settings.llm_provider,
+                model=settings.gemini_model if settings.llm_provider == "gemini" else settings.openai_model,
+                run_id=run_id,
+            )
+        else:
+            norm_detail.run_id = run_id
+
+        logger.error(
+            "infrastructure_failure",
+            run_id=run_id,
+            stage=norm_detail.stage,
+            provider=norm_detail.provider,
+            category=norm_detail.category,
+            status_code=norm_detail.status_code,
+            retryable=norm_detail.retryable,
+            consumes_content_retry=norm_detail.consumes_content_retry,
+            error_type=norm_detail.type,
+            exception_type=type(e).__name__,
+            retry_after=norm_detail.retry_after,
+        )
+
         _run_states[run_id] = {
             **initial_state,
-            "final_status": "failed",
-            "error": error_msg,
-            "rejection_reason": error_msg,
+            "final_status": "system_error",
+            "decision": "system_error",
+            "evaluation_status": "not_executed",
+            "retry_count": initial_state.get("retry_count", 0),
+            "error": norm_detail.message,
+            "error_detail": norm_detail.to_dict(),
             "completed_at": datetime.utcnow().isoformat(),
         }
         try:
@@ -111,7 +145,12 @@ async def _execute_workflow(
                 await repo.update_run_status(
                     run_id=uuid.UUID(run_id),
                     status="failed",
-                    metrics={"error": error_msg, "error_type": "INFRASTRUCTURE_FAILURE"},
+                    metrics={
+                        "error": norm_detail.message,
+                        "error_detail": norm_detail.to_dict(),
+                        "decision": "system_error",
+                        "evaluation_status": "not_executed",
+                    },
                 )
                 await session.commit()
         except Exception as db_err:
@@ -196,12 +235,17 @@ async def list_runs(session: AsyncSession = Depends(get_db_session)) -> list[Run
     # In-memory states first (most up-to-date for running/recent tasks)
     for run_id, state in _run_states.items():
         seen_ids.add(run_id)
+        f_status = state.get("final_status", "pending")
+        dec = state.get("decision") or ("system_error" if f_status in ("failed", "system_error") else (f_status if f_status in ("shipped", "rejected") else "pending"))
+        ev_status = state.get("evaluation_status") or ("not_executed" if f_status in ("failed", "system_error") else "pending")
         runs.append(RunSummaryResponse(
             run_id=run_id,
             topic=state.get("topic", ""),
-            final_status=state.get("final_status", "pending"),
+            final_status=f_status,
             retry_count=state.get("retry_count", 0),
             lesson_version=state.get("lesson_version", 0),
+            decision=dec,
+            evaluation_status=ev_status,
             created_at=state.get("created_at"),
             completed_at=state.get("completed_at"),
         ))
@@ -211,12 +255,17 @@ async def list_runs(session: AsyncSession = Depends(get_db_session)) -> list[Run
         s_id = str(dbr.id)
         if s_id not in seen_ids:
             seen_ids.add(s_id)
+            f_status = dbr.final_status
+            dec = "system_error" if f_status == "failed" else (f_status if f_status in ("shipped", "rejected") else "pending")
+            ev_status = "not_executed" if f_status == "failed" else "pending"
             runs.append(RunSummaryResponse(
                 run_id=s_id,
                 topic=dbr.topic,
-                final_status=dbr.final_status,
+                final_status=f_status,
                 retry_count=dbr.retry_count or 0,
                 lesson_version=0,
+                decision=dec,
+                evaluation_status=ev_status,
                 created_at=dbr.created_at.isoformat() if dbr.created_at else None,
                 completed_at=dbr.completed_at.isoformat() if dbr.completed_at else None,
             ))
@@ -248,22 +297,31 @@ async def get_run(
                     "critical_failures": latest_eval.critical_failures,
                 }
 
+            metrics_dict = db_run.metrics or {}
+            final_status = db_run.final_status
+            decision = metrics_dict.get("decision") or ("system_error" if final_status == "failed" else (final_status if final_status in ("shipped", "rejected") else "pending"))
+            eval_status = metrics_dict.get("evaluation_status") or ("not_executed" if final_status == "failed" else ("passed" if eval_result and eval_result.get("overall_passed") else "pending"))
+            err_detail = metrics_dict.get("error_detail")
+
             return RunDetailResponse(
                 run_id=run_id,
                 topic=db_run.topic,
                 learner_profile=db_run.learner_profile,
-                final_status=db_run.final_status,
+                final_status=final_status,
                 retry_count=db_run.retry_count or 0,
                 lesson_version=len(db_versions),
                 lesson_versions_count=len(db_versions),
                 curriculum_plan=None,
                 learning_objectives=[],
                 evaluation_result=eval_result,
-                metrics=db_run.metrics or {},
+                metrics=metrics_dict,
                 prompt_version=db_run.prompt_version,
                 rubric_version=db_run.rubric_version,
                 model_version=db_run.model_version,
-                error=db_run.metrics.get("error") if (db_run.metrics and isinstance(db_run.metrics, dict)) else None,
+                error=metrics_dict.get("error"),
+                error_detail=err_detail,
+                decision=decision,
+                evaluation_status=eval_status,
                 created_at=db_run.created_at.isoformat() if db_run.created_at else None,
                 completed_at=db_run.completed_at.isoformat() if db_run.completed_at else None,
             )
@@ -272,22 +330,31 @@ async def get_run(
         except Exception:
             raise HTTPException(404, f"Run {run_id} not found")
 
+    final_status = state.get("final_status", "pending")
+    decision = state.get("decision") or ("system_error" if final_status in ("failed", "system_error") else (final_status if final_status in ("shipped", "rejected") else "pending"))
+    eval_res = state.get("evaluation_result")
+    eval_status = state.get("evaluation_status") or ("not_executed" if final_status in ("failed", "system_error") else ("passed" if eval_res and eval_res.get("overall_passed") else "pending"))
+    err_detail = state.get("error_detail")
+
     return RunDetailResponse(
         run_id=run_id,
         topic=state.get("topic", ""),
         learner_profile=state.get("learner_profile", {}),
-        final_status=state.get("final_status", "pending"),
+        final_status=final_status,
         retry_count=state.get("retry_count", 0),
         lesson_version=state.get("lesson_version", 0),
         lesson_versions_count=len(state.get("lesson_versions", [])),
         curriculum_plan=state.get("curriculum_plan"),
         learning_objectives=state.get("learning_objectives", []),
-        evaluation_result=state.get("evaluation_result"),
+        evaluation_result=eval_res,
         metrics=state.get("metrics", {}),
         prompt_version=state.get("prompt_version", ""),
         rubric_version=state.get("rubric_version", ""),
         model_version=state.get("model_version", ""),
         error=state.get("error"),
+        error_detail=err_detail,
+        decision=decision,
+        evaluation_status=eval_status,
         created_at=state.get("created_at"),
         completed_at=state.get("completed_at"),
     )

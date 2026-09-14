@@ -7,7 +7,7 @@ content regeneration retries in the LangGraph workflow.
 
 import json
 import time
-from typing import Any, TypeVar
+from typing import Any, Optional, TypeVar
 
 from openai import AsyncOpenAI, APIError, APITimeoutError, InternalServerError, RateLimitError
 from pydantic import BaseModel, ValidationError
@@ -19,6 +19,7 @@ from tenacity import (
 )
 
 from src.config import get_settings
+from src.errors import ErrorCategory, InfrastructureErrorDetail, InfrastructureFailure, normalize_infrastructure_error
 from src.observability import get_logger
 from src.observability.tracing import MetricsCollector
 
@@ -27,9 +28,14 @@ logger = get_logger(__name__)
 T = TypeVar("T", bound=BaseModel)
 
 
-class LLMProviderError(Exception):
+class LLMProviderError(InfrastructureFailure):
     """Raised when the LLM provider fails after all infrastructure retries."""
-    pass
+
+    def __init__(self, message: str, detail: Optional[InfrastructureErrorDetail] = None) -> None:
+        if detail is None:
+            detail = normalize_infrastructure_error(Exception(message))
+            detail.message = message
+        super().__init__(detail=detail)
 
 
 class StructuredOutputError(Exception):
@@ -169,13 +175,28 @@ class LLMProvider:
                     logger.warning(
                         "gemini_call_failed_falling_back_to_openai",
                         node=node_name,
-                        error=str(e),
                         primary_model=self.gemini_model,
                         fallback_model=self.openai_model,
+                        error_type=type(e).__name__,
                     )
                 else:
-                    logger.error("gemini_api_error_no_fallback", error=str(e), node=node_name)
-                    raise LLMProviderError(f"Gemini API error: {e}") from e
+                    norm_detail = normalize_infrastructure_error(
+                        e,
+                        stage="generation",
+                        provider="gemini",
+                        model=self.gemini_model,
+                    )
+                    logger.error(
+                        "infrastructure_failure",
+                        stage="generation",
+                        provider="gemini",
+                        category=norm_detail.category,
+                        status_code=norm_detail.status_code,
+                        retryable=norm_detail.retryable,
+                        consumes_content_retry=False,
+                        error_type=norm_detail.type,
+                    )
+                    raise LLMProviderError(norm_detail.message, detail=norm_detail) from e
 
         # 2. Try OpenAI (Fallback or Primary if Gemini not configured)
         if self._openai_client:
@@ -190,16 +211,34 @@ class LLMProvider:
                     max_tokens=max_tokens,
                     node_name=node_name,
                 )
-            except (APITimeoutError, RateLimitError):
-                raise
-            except APIError as e:
-                logger.error("openai_api_error", error=str(e), node=node_name)
-                raise LLMProviderError(f"LLM API error: {e}") from e
             except Exception as e:
-                logger.error("llm_execution_error", error=str(e), node=node_name)
-                raise LLMProviderError(f"LLM execution error: {e}") from e
+                norm_detail = normalize_infrastructure_error(
+                    e,
+                    stage="generation",
+                    provider="openai",
+                    model=self.openai_model,
+                )
+                logger.error(
+                    "infrastructure_failure",
+                    stage="generation",
+                    provider="openai",
+                    category=norm_detail.category,
+                    status_code=norm_detail.status_code,
+                    retryable=norm_detail.retryable,
+                    consumes_content_retry=False,
+                    error_type=norm_detail.type,
+                )
+                raise LLMProviderError(norm_detail.message, detail=norm_detail) from e
 
-        raise LLMProviderError("No LLM client configured (both Gemini and OpenAI keys missing).")
+        norm_detail = InfrastructureErrorDetail(
+            category=ErrorCategory.AUTHENTICATION.value,
+            message="No LLM client configured (both Gemini and OpenAI keys missing).",
+            detail="Configure GEMINI_API_KEY or OPENAI_API_KEY in environment.",
+            retryable=False,
+            consumes_content_retry=False,
+            status_code=401,
+        )
+        raise LLMProviderError(norm_detail.message, detail=norm_detail)
 
     async def generate_structured(
         self,
