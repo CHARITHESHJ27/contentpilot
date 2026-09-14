@@ -119,12 +119,40 @@ Open [http://localhost:3000](http://localhost:3000) in your browser.
 
 ---
 
+## 🦙 Local LLM with Ollama (`llama3.2`)
+
+ContentPilot supports running **100% locally** with zero external cloud API dependencies using [Ollama](https://ollama.ai) and the lightweight, high-performance `llama3.2` model.
+
+### 1. Install & Start Ollama
+```bash
+# Install Ollama (macOS / Linux / Windows)
+brew install ollama  # macOS
+
+# Pull the 3.2B parameters model (~2.0 GB)
+ollama pull llama3.2
+
+# Start the local daemon (runs on port 11434)
+ollama serve
+```
+
+### 2. Configure ContentPilot for Ollama
+In your `.env` file:
+```bash
+LLM_PROVIDER=ollama
+OLLAMA_BASE_URL=http://localhost:11434
+OLLAMA_MODEL=llama3.2
+```
+
+ContentPilot interfaces directly with Ollama's native OpenAI-compatible `/v1` endpoint. Structured schemas, JSON markdown fences, and conversational recovery are handled automatically. If the Ollama daemon is offline or interrupted, errors are normalized into clean `SYSTEM_ERROR` states without consuming pedagogical content retries.
+
+---
+
 ## 🧪 Testing & Verification
 
 Run unit tests and verification checks:
 
 ```bash
-# Run unit test suite (50 tests covering chunking, checks, retry, fallback, evolution, infrastructure errors, and pgvector)
+# Run unit test suite (57 tests covering chunking, checks, retry, fallback, evolution, infrastructure errors, pgvector, and Ollama)
 .venv/bin/pytest tests/unit
 
 # Verify Next.js production build

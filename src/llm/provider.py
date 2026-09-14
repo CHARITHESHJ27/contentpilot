@@ -18,7 +18,7 @@ from tenacity import (
     wait_exponential,
 )
 
-from src.config import get_settings
+from src.config import LLMProvider as LLMProviderEnum, get_settings
 from src.errors import ErrorCategory, InfrastructureErrorDetail, InfrastructureFailure, normalize_infrastructure_error
 from src.observability import get_logger
 from src.observability.tracing import MetricsCollector
@@ -47,8 +47,9 @@ class LLMProvider:
     """Abstraction over LLM APIs with structured output support and automatic provider failover.
 
     Handles:
-    - Primary provider execution (Google Gemini via OpenAI-compatible endpoint)
+    - Primary provider execution (Google Gemini, OpenAI, or local Ollama)
     - Automatic fallback execution (OpenAI) if primary encounters rate limits, quota issues, or errors
+    - Local LLM inference via Ollama (OpenAI-compatible /v1 endpoint)
     - Structured output parsing with Pydantic validation
     - Token tracking and observability metrics
     - Bounded infrastructure retries
@@ -62,15 +63,33 @@ class LLMProvider:
         self.settings = settings
         self.gemini_model = settings.gemini_model
         self.openai_model = settings.openai_model
+        self.ollama_model = getattr(settings, "ollama_model", "llama3.2")
+        self.ollama_base_url = getattr(settings, "ollama_base_url", "http://localhost:11434")
         self.enable_fallback = settings.enable_fallback
-        self.model = settings.gemini_model if settings.gemini_api_key else settings.openai_model
         self.temperature = settings.llm_temperature
         self.max_tokens = settings.llm_max_tokens
         self.metrics = metrics or MetricsCollector()
 
+        # Check configured provider
+        provider_val = getattr(settings, "llm_provider", None)
+        is_ollama = (
+            provider_val == LLMProviderEnum.OLLAMA
+            or (isinstance(provider_val, str) and provider_val.lower() == "ollama")
+        )
+
+        # Initialize Ollama client if provider is ollama
+        self._ollama_client: AsyncOpenAI | None = None
+        if is_ollama:
+            base_url = f"{self.ollama_base_url.rstrip('/')}/v1"
+            self._ollama_client = AsyncOpenAI(
+                base_url=base_url,
+                api_key="ollama",
+            )
+            self.model = self.ollama_model
+
         # Initialize Gemini client if key is present
         self._gemini_client: AsyncOpenAI | None = None
-        if settings.gemini_api_key:
+        if getattr(settings, "gemini_api_key", ""):
             self._gemini_client = AsyncOpenAI(
                 api_key=settings.gemini_api_key,
                 base_url=settings.gemini_base_url,
@@ -78,17 +97,23 @@ class LLMProvider:
 
         # Initialize OpenAI client if key is present or as fallback
         self._openai_client: AsyncOpenAI | None = None
-        if settings.openai_api_key:
+        if getattr(settings, "openai_api_key", ""):
             self._openai_client = AsyncOpenAI(api_key=settings.openai_api_key)
-        elif not self._gemini_client:
+        elif not self._gemini_client and not self._ollama_client:
             # Default placeholder client for offline/mock environments
             self._openai_client = AsyncOpenAI(api_key="sk-placeholder")
 
+        if not is_ollama:
+            self.model = settings.gemini_model if self._gemini_client else settings.openai_model
+
+        primary_desc = "ollama" if self._ollama_client else ("gemini" if self._gemini_client else "openai")
         logger.info(
             "llm_provider_initialized",
-            primary="gemini" if self._gemini_client else "openai",
+            primary=primary_desc,
+            provider=str(provider_val),
             gemini_model=self.gemini_model,
             openai_model=self.openai_model,
+            ollama_model=self.ollama_model,
             fallback_enabled=self.enable_fallback and bool(self._openai_client),
             temperature=self.temperature,
         )
@@ -156,8 +181,50 @@ class LLMProvider:
         max_tokens: int | None = None,
         node_name: str = "unknown",
     ) -> str:
-        """Generate text response: Gemini primary, falling back to OpenAI on error."""
-        # 1. Try Gemini (Primary) if configured
+        """Generate text response: Ollama if configured, else Gemini primary with OpenAI fallback."""
+        provider_val = getattr(self.settings, "llm_provider", None)
+        is_ollama = (
+            provider_val == LLMProviderEnum.OLLAMA
+            or (isinstance(provider_val, str) and provider_val.lower() == "ollama")
+            or (self._ollama_client and not self._gemini_client and not self._openai_client)
+        )
+
+        # 1. Ollama (Local LLM Provider)
+        if is_ollama:
+            if not self._ollama_client:
+                base_url = f"{self.ollama_base_url.rstrip('/')}/v1"
+                self._ollama_client = AsyncOpenAI(base_url=base_url, api_key="ollama")
+            try:
+                return await self._call_api(
+                    client=self._ollama_client,
+                    model=self.ollama_model,
+                    provider_name="ollama",
+                    system_prompt=system_prompt,
+                    user_prompt=user_prompt,
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                    node_name=node_name,
+                )
+            except Exception as e:
+                norm_detail = normalize_infrastructure_error(
+                    e,
+                    stage="generation",
+                    provider="ollama",
+                    model=self.ollama_model,
+                )
+                logger.error(
+                    "infrastructure_failure",
+                    stage="generation",
+                    provider="ollama",
+                    category=norm_detail.category,
+                    status_code=norm_detail.status_code,
+                    retryable=norm_detail.retryable,
+                    consumes_content_retry=False,
+                    error_type=norm_detail.type,
+                )
+                raise LLMProviderError(norm_detail.message, detail=norm_detail) from e
+
+        # 2. Try Gemini (Primary) if configured
         if self._gemini_client:
             try:
                 return await self._call_api(
@@ -198,7 +265,7 @@ class LLMProvider:
                     )
                     raise LLMProviderError(norm_detail.message, detail=norm_detail) from e
 
-        # 2. Try OpenAI (Fallback or Primary if Gemini not configured)
+        # 3. Try OpenAI (Fallback or Primary if Gemini not configured)
         if self._openai_client:
             try:
                 return await self._call_api(
@@ -232,8 +299,8 @@ class LLMProvider:
 
         norm_detail = InfrastructureErrorDetail(
             category=ErrorCategory.AUTHENTICATION.value,
-            message="No LLM client configured (both Gemini and OpenAI keys missing).",
-            detail="Configure GEMINI_API_KEY or OPENAI_API_KEY in environment.",
+            message="No LLM client configured (Gemini, OpenAI, or Ollama missing).",
+            detail="Configure GEMINI_API_KEY, OPENAI_API_KEY, or set LLM_PROVIDER=ollama.",
             retryable=False,
             consumes_content_retry=False,
             status_code=401,
@@ -282,6 +349,17 @@ class LLMProvider:
             parsed = json.loads(cleaned, strict=False)
             return output_model.model_validate(parsed)
         except (json.JSONDecodeError, ValidationError) as e:
+            # Recovery attempt: extract first JSON object between { and }
+            first_brace = cleaned.find("{")
+            last_brace = cleaned.rfind("}")
+            if first_brace != -1 and last_brace != -1 and last_brace > first_brace:
+                try:
+                    sub_json = cleaned[first_brace : last_brace + 1]
+                    parsed = json.loads(sub_json, strict=False)
+                    return output_model.model_validate(parsed)
+                except Exception:
+                    pass
+
             # If primary produced malformed output and fallback is available, retry once with fallback
             if self._gemini_client and self._openai_client and self.enable_fallback:
                 logger.warning(

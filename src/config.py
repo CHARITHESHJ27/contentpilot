@@ -7,7 +7,7 @@ Never hard-code API keys or connection strings.
 from enum import Enum
 from functools import lru_cache
 
-from pydantic import Field, field_validator
+from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings
 
 
@@ -20,6 +20,7 @@ class AppEnvironment(str, Enum):
 class LLMProvider(str, Enum):
     OPENAI = "openai"
     GEMINI = "gemini"
+    OLLAMA = "ollama"
     HYBRID = "hybrid"
 
 
@@ -45,10 +46,24 @@ class Settings(BaseSettings):
     openai_model: str = "gpt-4o"
     enable_fallback: bool = True
 
+    # Ollama (Local)
+    ollama_base_url: str = "http://localhost:11434"
+    ollama_model: str = "llama3.2"
+
     # Common
     llm_model: str = "gemini-3.5-flash"
     llm_temperature: float = 0.3
     llm_max_tokens: int = 4096
+
+    @model_validator(mode="after")
+    def resolve_llm_model(self) -> "Settings":
+        if self.llm_provider == LLMProvider.OLLAMA:
+            self.llm_model = self.ollama_model
+        elif self.llm_provider == LLMProvider.OPENAI:
+            self.llm_model = self.openai_model
+        elif self.llm_provider == LLMProvider.GEMINI:
+            self.llm_model = self.gemini_model
+        return self
 
     # --- Embedding ---
     embedding_model: str = "text-embedding-3-small"

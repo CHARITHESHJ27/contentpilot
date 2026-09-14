@@ -178,17 +178,26 @@ def normalize_infrastructure_error(
             run_id=run_id,
         )
 
-    # 4. Provider Unavailable / Internal Server Error (500 / 502 / 503)
+    # 4. Provider Unavailable / Connection / Internal Server Error (500 / 502 / 503)
     if (
         status_code in (500, 502, 503)
         or "internal server error" in raw_str.lower()
         or "unavailable" in raw_str.lower()
-        or exc_type_name in ("InternalServerError", "ServiceUnavailableError", "APIConnectionError")
+        or "connection refused" in raw_str.lower()
+        or "connecterror" in raw_str.lower()
+        or "11434" in raw_str
+        or "ollama" in raw_str.lower()
+        or exc_type_name in ("InternalServerError", "ServiceUnavailableError", "APIConnectionError", "ConnectError", "ConnectionRefusedError")
     ):
+        msg = "The AI provider service is temporarily unavailable."
+        detail_msg = "Upstream model servers experienced an internal error. Please retry later."
+        if provider == "ollama" or "11434" in raw_str or "ollama" in raw_str.lower():
+            msg = "The Ollama local LLM service is temporarily unavailable."
+            detail_msg = "Unable to connect to local Ollama service at http://localhost:11434. Please ensure Ollama is running ('ollama serve')."
         return InfrastructureErrorDetail(
             category=ErrorCategory.PROVIDER_UNAVAILABLE.value,
-            message="The AI provider service is temporarily unavailable.",
-            detail="Upstream model servers experienced an internal error. Please retry later.",
+            message=msg,
+            detail=detail_msg,
             retryable=True,
             consumes_content_retry=False,
             provider=provider,

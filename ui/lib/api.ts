@@ -122,6 +122,9 @@ export interface HealthStatus {
   version: string;
   database: string;
   pgvector: string;
+  llm_provider?: string;
+  llm_model?: string;
+  llm_status?: string;
 }
 
 export interface IngestResponse {

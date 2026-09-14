@@ -732,9 +732,49 @@ async def health_check() -> HealthResponse:
     except Exception:
         pgvector_status = "unavailable"
 
+    # Check LLM provider
+    settings = get_settings()
+    provider_val = (
+        settings.llm_provider.value
+        if hasattr(settings.llm_provider, "value")
+        else str(settings.llm_provider)
+    )
+    llm_model = settings.llm_model
+    llm_status = "connected"
+
+    if provider_val == "ollama":
+        llm_model = settings.ollama_model
+        try:
+            import httpx
+            async with httpx.AsyncClient(timeout=2.0) as client:
+                res = await client.get(f"{settings.ollama_base_url.rstrip('/')}/api/tags")
+                if res.status_code == 200:
+                    llm_status = "connected"
+                else:
+                    llm_status = "unavailable"
+        except Exception:
+            llm_status = "unavailable"
+    elif provider_val == "gemini":
+        llm_model = settings.gemini_model
+        llm_status = "configured" if settings.gemini_api_key else "missing_key"
+    elif provider_val == "openai":
+        llm_model = settings.openai_model
+        llm_status = "configured" if settings.openai_api_key else "missing_key"
+    else:  # hybrid
+        llm_status = "configured" if (settings.gemini_api_key or settings.openai_api_key) else "missing_key"
+
+    overall_healthy = (
+        db_status == "ok"
+        and pgvector_status == "ok"
+        and llm_status in ("connected", "configured")
+    )
+
     return HealthResponse(
-        status="healthy" if db_status == "ok" and pgvector_status == "ok" else "degraded",
+        status="healthy" if overall_healthy else "degraded",
         version="0.1.0",
         database=db_status,
         pgvector=pgvector_status,
+        llm_provider=provider_val,
+        llm_model=llm_model,
+        llm_status=llm_status,
     )

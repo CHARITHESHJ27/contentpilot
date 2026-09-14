@@ -162,6 +162,9 @@ class HealthResponse(BaseModel):
     version: str
     database: str
     pgvector: str
+    llm_provider: Optional[str] = None
+    llm_model: Optional[str] = None
+    llm_status: Optional[str] = None
 
 
 class IngestResponse(BaseModel):
