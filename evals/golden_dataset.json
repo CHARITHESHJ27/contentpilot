@@ -1,0 +1,158 @@
+[
+  {
+    "id": "golden-001",
+    "name": "Correct RAG explanation",
+    "description": "A well-written, accurate RAG lesson",
+    "expected_result": "PASS",
+    "lesson_snippet": {
+      "title": "Introduction to RAG",
+      "sections": [
+        {"heading": "What RAG Means", "content": "RAG stands for Retrieval-Augmented Generation. It retrieves relevant documents from a knowledge base and provides them as context to an LLM. The LLM then generates a response grounded in this retrieved information. RAG does not retrain or modify the LLM in any way.", "order": 0}
+      ],
+      "what_you_will_learn": ["What RAG is", "How RAG works"],
+      "quiz": [],
+      "summary": "RAG enhances LLMs by providing external knowledge through retrieval."
+    },
+    "expected_checks": {
+      "accuracy": "PASS",
+      "grounding": "PASS"
+    }
+  },
+  {
+    "id": "golden-002",
+    "name": "RAG retraining hallucination",
+    "description": "Contains the claim that RAG retrains the LLM",
+    "expected_result": "FAIL",
+    "lesson_snippet": {
+      "title": "Introduction to RAG",
+      "sections": [
+        {"heading": "How RAG Works", "content": "RAG retrains the LLM whenever new documents are added to the knowledge base. This ensures the model always has the latest information built into its parameters.", "order": 0}
+      ],
+      "what_you_will_learn": ["What RAG is"],
+      "quiz": [],
+      "summary": "RAG retrains models with new data."
+    },
+    "expected_checks": {
+      "accuracy": "FAIL",
+      "grounding": "FAIL",
+      "prohibited_claims": "FAIL"
+    },
+    "expected_severity": "critical"
+  },
+  {
+    "id": "golden-003",
+    "name": "Unexplained embeddings",
+    "description": "Uses embedding terminology without explanation",
+    "expected_result": "FAIL",
+    "lesson_snippet": {
+      "title": "Introduction to RAG",
+      "sections": [
+        {"heading": "How RAG Works", "content": "The system uses dense embeddings with HNSW indexing and cosine similarity to perform approximate nearest neighbor search in a high-dimensional vector space.", "order": 0}
+      ],
+      "what_you_will_learn": ["What RAG is"],
+      "quiz": [],
+      "summary": "RAG uses embeddings for retrieval."
+    },
+    "expected_checks": {
+      "jargon_handling": "FAIL",
+      "beginner_friendliness": "FAIL"
+    }
+  },
+  {
+    "id": "golden-004",
+    "name": "Missing example",
+    "description": "No concrete real-world example provided",
+    "expected_result": "FAIL",
+    "lesson_snippet": {
+      "title": "Introduction to RAG",
+      "sections": [
+        {"heading": "What RAG Means", "content": "RAG is a technique that combines retrieval with generation.", "order": 0},
+        {"heading": "How RAG Works", "content": "Documents are embedded and stored. Queries retrieve relevant documents. The LLM uses retrieved context.", "order": 1}
+      ],
+      "what_you_will_learn": ["What RAG is"],
+      "quiz": [],
+      "summary": "RAG combines retrieval with generation."
+    },
+    "expected_checks": {
+      "teaching_by_example": "FAIL"
+    }
+  },
+  {
+    "id": "golden-005",
+    "name": "Incorrect retrieval explanation",
+    "description": "Says retrieval sends entire KB to LLM",
+    "expected_result": "FAIL",
+    "lesson_snippet": {
+      "title": "Introduction to RAG",
+      "sections": [
+        {"heading": "How RAG Works", "content": "In RAG, the entire knowledge base is sent to the LLM so it can search through all documents to find the answer.", "order": 0}
+      ],
+      "what_you_will_learn": ["What RAG is"],
+      "quiz": [],
+      "summary": "RAG sends all documents to the LLM."
+    },
+    "expected_checks": {
+      "accuracy": "FAIL",
+      "grounding": "FAIL"
+    }
+  },
+  {
+    "id": "golden-006",
+    "name": "Overly advanced language",
+    "description": "Uses complex academic language unsuitable for target learner",
+    "expected_result": "FAIL",
+    "lesson_snippet": {
+      "title": "An Examination of Retrieval-Augmented Generation Methodologies",
+      "sections": [
+        {"heading": "Theoretical Framework", "content": "The paradigmatic shift in natural language processing necessitates a comprehensive understanding of the epistemological foundations underlying retrieval-augmented generation architectures, wherein the concatenation of retrieved textual artifacts with the contextual window of transformer-based language models facilitates the amelioration of hallucination phenomena.", "order": 0}
+      ],
+      "what_you_will_learn": ["Understand RAG methodologies"],
+      "quiz": [],
+      "summary": "This examination elucidates the theoretical underpinnings of RAG."
+    },
+    "expected_checks": {
+      "beginner_friendliness": "FAIL",
+      "clarity": "FAIL",
+      "sentence_complexity": "FAIL"
+    }
+  },
+  {
+    "id": "golden-007",
+    "name": "Missing key concept (vector database)",
+    "description": "Lesson covers RAG but never mentions vector databases",
+    "expected_result": "FAIL",
+    "lesson_snippet": {
+      "title": "Introduction to RAG",
+      "sections": [
+        {"heading": "How RAG Works", "content": "RAG retrieves documents from a database and sends them to the LLM. The LLM then uses this context to generate a response.", "order": 0}
+      ],
+      "what_you_will_learn": ["What RAG is"],
+      "quiz": [],
+      "summary": "RAG uses retrieval to enhance LLM responses."
+    },
+    "expected_checks": {
+      "coverage": "FAIL"
+    },
+    "note": "Missing: embeddings, vector database concepts"
+  },
+  {
+    "id": "golden-008",
+    "name": "Poor teaching sequence",
+    "description": "Concepts presented in wrong order (complex before simple)",
+    "expected_result": "FAIL",
+    "lesson_snippet": {
+      "title": "Introduction to RAG",
+      "sections": [
+        {"heading": "HNSW Indexing", "content": "HNSW creates a hierarchical graph structure for approximate nearest neighbor search.", "order": 0},
+        {"heading": "What is RAG", "content": "RAG stands for Retrieval-Augmented Generation.", "order": 1},
+        {"heading": "What are Embeddings", "content": "Embeddings are vector representations of text.", "order": 2}
+      ],
+      "what_you_will_learn": ["What RAG is"],
+      "quiz": [],
+      "summary": "RAG uses HNSW and embeddings."
+    },
+    "expected_checks": {
+      "coherence": "FAIL"
+    }
+  }
+]
