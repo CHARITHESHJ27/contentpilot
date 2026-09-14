@@ -3,6 +3,9 @@
 .env.*
 !.env.example
 
+# Local Migration & Scratch Notes
+MIGRATION_GEMINI_TO_GROQ.md
+
 # Python
 __pycache__/
 *.py[cod]
