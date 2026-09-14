@@ -11,6 +11,46 @@ interface Props {
   onRetry?: () => void;
 }
 
+function getCleanErrorMessage(errorDetail?: any, rawError?: string): { message: string; detail?: string } {
+  if (errorDetail?.message && !errorDetail.message.includes("[{") && !errorDetail.message.includes("Error code:")) {
+    return {
+      message: errorDetail.message,
+      detail: errorDetail.detail || "AI provider rate limit reached. Please retry in a few moments.",
+    };
+  }
+
+  const raw = rawError || "";
+  if (raw.includes("429") || raw.toLowerCase().includes("quota") || raw.toLowerCase().includes("rate limit") || raw.includes("RESOURCE_EXHAUSTED")) {
+    return {
+      message: "The AI provider is temporarily unavailable because a rate limit was reached.",
+      detail: "AI provider rate limit reached. Please retry in a few moments.",
+    };
+  }
+  if (raw.toLowerCase().includes("timeout") || raw.includes("504")) {
+    return {
+      message: "The request to the AI provider timed out.",
+      detail: "The upstream model took too long to respond. Please retry the run.",
+    };
+  }
+  if (raw.toLowerCase().includes("auth") || raw.includes("401") || raw.includes("403")) {
+    return {
+      message: "AI provider authentication failed.",
+      detail: "The provider API credentials are invalid or lack required permissions.",
+    };
+  }
+  if (raw.includes("[{") || raw.includes("Error code:") || raw.includes("Traceback") || raw.includes("INFRASTRUCTURE_FAILURE")) {
+    return {
+      message: "Content generation could not be completed due to an AI provider error.",
+      detail: "An infrastructure error occurred with the upstream service. Please retry later.",
+    };
+  }
+
+  return {
+    message: raw || "The AI provider is temporarily unavailable.",
+    detail: "Please retry later.",
+  };
+}
+
 export default function RunStatusHeader({
   runDetail,
   currentAttempt = 1,
@@ -102,26 +142,28 @@ export default function RunStatusHeader({
       </div>
 
       {/* Clean Normalized System Error Card */}
-      {isSystemError && (
-        <div className="rounded-2xl p-5 bg-rose-500/10 border border-rose-500/30 space-y-4">
-          <div className="flex flex-wrap items-start justify-between gap-4">
-            <div className="space-y-1.5 max-w-2xl">
-              <div className="flex items-center gap-2 text-rose-300 font-bold text-sm">
-                <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0" />
-                <span>SYSTEM ERROR</span>
-              </div>
-              <p className="text-xs font-medium text-white/90">
-                Content generation could not be completed.
-              </p>
-              <p className="text-xs text-rose-200/80">
-                {runDetail.error_detail?.message || runDetail.error || "The AI provider is temporarily unavailable because a rate limit was reached."}
-              </p>
-              {runDetail.error_detail?.detail && runDetail.error_detail.detail !== runDetail.error && (
-                <p className="text-[11px] text-slate-300/80">
-                  {runDetail.error_detail.detail}
+      {isSystemError && (() => {
+        const cleanErr = getCleanErrorMessage(runDetail.error_detail, runDetail.error);
+        return (
+          <div className="rounded-2xl p-5 bg-rose-500/10 border border-rose-500/30 space-y-4">
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div className="space-y-1.5 max-w-2xl">
+                <div className="flex items-center gap-2 text-rose-300 font-bold text-sm">
+                  <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0" />
+                  <span>SYSTEM ERROR</span>
+                </div>
+                <p className="text-xs font-medium text-white/90">
+                  Content generation could not be completed.
                 </p>
-              )}
-            </div>
+                <p className="text-xs text-rose-200/90 font-medium">
+                  {cleanErr.message}
+                </p>
+                {cleanErr.detail && (
+                  <p className="text-[11px] text-slate-300/80">
+                    {cleanErr.detail}
+                  </p>
+                )}
+              </div>
 
             {onRetry && (
               <button
@@ -178,7 +220,8 @@ export default function RunStatusHeader({
             )}
           </div>
         </div>
-      )}
+        );
+      })()}
 
       {/* Workflow Check System Checklist */}
       <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-2">

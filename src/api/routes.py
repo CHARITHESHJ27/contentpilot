@@ -302,6 +302,14 @@ async def get_run(
             decision = metrics_dict.get("decision") or ("system_error" if final_status == "failed" else (final_status if final_status in ("shipped", "rejected") else "pending"))
             eval_status = metrics_dict.get("evaluation_status") or ("not_executed" if final_status == "failed" else ("passed" if eval_result and eval_result.get("overall_passed") else "pending"))
             err_detail = metrics_dict.get("error_detail")
+            raw_err = metrics_dict.get("error")
+            clean_error = raw_err
+
+            if raw_err and ("[{'error':" in raw_err or "INFRASTRUCTURE_FAILURE" in raw_err or "429" in raw_err):
+                norm = normalize_infrastructure_error(Exception(raw_err), stage="generation", provider="gemini", run_id=run_id)
+                clean_error = norm.message
+                if not err_detail:
+                    err_detail = norm.to_dict()
 
             return RunDetailResponse(
                 run_id=run_id,
@@ -318,7 +326,7 @@ async def get_run(
                 prompt_version=db_run.prompt_version,
                 rubric_version=db_run.rubric_version,
                 model_version=db_run.model_version,
-                error=metrics_dict.get("error"),
+                error=clean_error,
                 error_detail=err_detail,
                 decision=decision,
                 evaluation_status=eval_status,
@@ -335,6 +343,14 @@ async def get_run(
     eval_res = state.get("evaluation_result")
     eval_status = state.get("evaluation_status") or ("not_executed" if final_status in ("failed", "system_error") else ("passed" if eval_res and eval_res.get("overall_passed") else "pending"))
     err_detail = state.get("error_detail")
+    raw_err = state.get("error")
+    clean_error = raw_err
+
+    if raw_err and ("[{'error':" in raw_err or "INFRASTRUCTURE_FAILURE" in raw_err or "429" in raw_err):
+        norm = normalize_infrastructure_error(Exception(raw_err), stage="generation", provider="gemini", run_id=run_id)
+        clean_error = norm.message
+        if not err_detail:
+            err_detail = norm.to_dict()
 
     return RunDetailResponse(
         run_id=run_id,
@@ -351,7 +367,7 @@ async def get_run(
         prompt_version=state.get("prompt_version", ""),
         rubric_version=state.get("rubric_version", ""),
         model_version=state.get("model_version", ""),
-        error=state.get("error"),
+        error=clean_error,
         error_detail=err_detail,
         decision=decision,
         evaluation_status=eval_status,
